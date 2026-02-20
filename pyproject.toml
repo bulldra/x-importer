@@ -1,0 +1,25 @@
+[project]
+name = "x-importer"
+version = "0.1.0"
+description = "X (Twitter) の投稿を取得して Obsidian に保存するツール"
+requires-python = ">=3.11"
+dependencies = [
+    "tweepy>=4.14.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+x-importer = "x_importer.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+]
+
+[tool.mypy]
+ignore_missing_imports = true
