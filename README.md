@@ -17,13 +17,22 @@ cron 等での自動実行に適した構成。
 | テスト | pytest 9.0.2+ |
 | 型チェック | mypy 1.19.1+ |
 
+## インストール
+
+```bash
+uv tool install --editable .
+```
+
+これで `x-importer` コマンドがグローバルに利用可能になる。ソース変更も即反映。
+
 ## 使い方
 
 ```bash
-uv run python -m x_importer              # 前日1日分
-uv run python -m x_importer 2026-02-19   # 指定日の1日分
-uv run python -m x_importer 2026-02-15 --end 2026-02-20  # 期間指定
-uv run python -m x_importer --refresh    # キャッシュを無視して再取得
+x-importer                              # 前日1日分
+x-importer 2026-02-19                   # 指定日の1日分
+x-importer 2026-02-15 --end 2026-02-20  # 期間指定
+x-importer --refresh                    # キャッシュを無視して再取得
+x-importer -v                           # 詳細ログ表示
 ```
 
 ### CLI 引数
@@ -33,8 +42,14 @@ uv run python -m x_importer --refresh    # キャッシュを無視して再取�
 | `date` | 省略可 | 取得開始日 (YYYY-MM-DD, JST)。省略時は前日 |
 | `--end` | 省略可 | 取得終了日 (YYYY-MM-DD, JST)。省略時は date + 1日 |
 | `--refresh` | 省略可 | キャッシュを無視して API から再取得 |
+| `--verbose`, `-v` | 省略可 | DEBUG レベルのログをコンソールに表示 |
 
 日付は JST (Asia/Tokyo) で解釈され、API リクエスト時に UTC に変換される。
+
+### ログ
+
+- コンソール: INFO レベル（`-v` で DEBUG）
+- ファイル: `OBSIDIAN_OUTPUT_DIR/.logs/YYYY-MM-DD.log` に DEBUG レベルで常時出力
 
 ## モジュール構成
 
@@ -177,13 +192,21 @@ type: x-posts
 
 #### API プラン
 
-| プラン | 月額 | Tweet 読み取り | 備考 |
-|--------|------|---------------|------|
-| Free | $0 | 100件/月 | 読み取りは実質不可 |
-| **Basic** | **$200** | **15,000件/月** | **本ツール推奨** |
-| Pro | $5,000 | 1,000,000件/月 | 大規模利用向け |
+| プラン | 月額 | Tweet 読み取り | 1読み取りあたり | 備考 |
+|--------|------|---------------|----------------|------|
+| Free | $0 | 100件/月 | - | 読み取りは実質不可 |
+| **Pay-Per-Use** | **従量課金** | **無制限** | **$0.005** | **本ツール推奨** |
+| Basic | $200 | 15,000件/月 | ~$0.013 | 固定月額 |
+| Pro | $5,000 | 1,000,000件/月 | $0.005 | 大規模利用向け |
 
-Free プランでは読み取りが月100件に制限されており実用不可。**Basic 以上が必須**。
+**Pay-Per-Use プランを推奨。** 個人の日次アーカイブ用途では1回あたり数十件程度の読み取りのため、月額コストは $1 未満に収まる。固定月額の Basic ($200/月) と比較して大幅にコストを抑えられる。
+
+- 1日10件の投稿を毎日取得: 10件 x 30日 x $0.005 = **$1.50/月**
+- 1日30件の投稿を毎日取得: 30件 x 30日 x $0.005 = **$4.50/月**
+
+Pay-Per-Use の登録: https://developer.x.com/ → Dashboard → Products → 「Pay As You Go」を選択
+
+Free プランでは読み取りが月100件に制限されており実用不可。
 
 #### Developer アカウント作成
 
@@ -197,7 +220,7 @@ Free プランでは読み取りが月100件に制限されており実用不可
 1. Dashboard → Projects & Apps → 「+ Create Project」
 2. プロジェクト名（例: `x-importer`）・用途・説明を入力
 3. プロジェクト内で「+ Create App」→ App 名を入力
-4. **Products セクションから Basic プランにアップグレード**
+4. **Products セクションから Pay-Per-Use プランに登録**
 
 #### OAuth 1.0a の設定
 
@@ -265,4 +288,4 @@ uv run ruff check src/ tests/
 - X Developer Portal: https://developer.x.com/
 - Developer Dashboard: https://developer.x.com/en/portal/dashboard
 - OAuth 1.0a ドキュメント: https://developer.x.com/en/docs/authentication/oauth-1-0a
-- プラン・料金: https://developer.x.com/en/products
+- プラン・料金: https://developer.x.com/#pricing
