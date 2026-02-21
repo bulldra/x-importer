@@ -43,48 +43,34 @@ def get_me(client: tweepy.Client) -> UserInfo:
 
 
 def _tweet_to_dict(tweet: tweepy.Tweet) -> dict:
-    d = {"id": str(tweet.id), "text": tweet.text}
-    if tweet.created_at:
-        d["created_at"] = tweet.created_at.isoformat()
-    if tweet.public_metrics:
-        d["public_metrics"] = tweet.public_metrics
-    if hasattr(tweet, "author_id") and tweet.author_id:
-        d["author_id"] = str(tweet.author_id)
-    if tweet.referenced_tweets:
+    """tweepy.Tweet の全データを dict 化（キャッシュ用に全フィールド保持）"""
+    d = dict(tweet.data)
+    d["id"] = str(d.get("id", ""))
+    if "author_id" in d:
+        d["author_id"] = str(d["author_id"])
+    if "referenced_tweets" in d:
         d["referenced_tweets"] = [
-            {"type": rt.type, "id": str(rt.id)} for rt in tweet.referenced_tweets
+            {**rt, "id": str(rt["id"])} for rt in d["referenced_tweets"]
         ]
-    if tweet.entities and "urls" in tweet.entities:
-        d["entities"] = {
-            "urls": [
-                {"url": u["url"], "expanded_url": u.get("expanded_url", u["url"])}
-                for u in tweet.entities["urls"]
-            ]
-        }
-    if hasattr(tweet, "attachments") and tweet.attachments:
-        media_keys = tweet.attachments.get("media_keys", [])
-        if media_keys:
-            d["attachments"] = {"media_keys": [str(k) for k in media_keys]}
-    if hasattr(tweet, "note_tweet") and tweet.note_tweet:
-        d["note_tweet"] = tweet.note_tweet
-    if hasattr(tweet, "article") and tweet.article:
-        d["article"] = tweet.article
+    if "attachments" in d and "media_keys" in d.get("attachments", {}):
+        d["attachments"]["media_keys"] = [
+            str(k) for k in d["attachments"]["media_keys"]
+        ]
+    if "created_at" in d and hasattr(d["created_at"], "isoformat"):
+        d["created_at"] = d["created_at"].isoformat()
     return d
 
 
 def _user_to_dict(user: tweepy.User) -> dict:
-    return {"id": str(user.id), "username": user.username}
+    """tweepy.User の全データを dict 化"""
+    d = dict(user.data)
+    d["id"] = str(d.get("id", ""))
+    return d
 
 
 def _media_to_dict(media: tweepy.Media) -> dict:
-    d: dict = {"media_key": media.media_key, "type": media.type}
-    if media.url:
-        d["url"] = media.url
-    if hasattr(media, "preview_image_url") and media.preview_image_url:
-        d["preview_image_url"] = media.preview_image_url
-    if hasattr(media, "variants") and media.variants:
-        d["variants"] = media.variants
-    return d
+    """tweepy.Media の全データを dict 化"""
+    return dict(media.data)
 
 
 def fetch_user_tweets(
