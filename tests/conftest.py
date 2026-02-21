@@ -14,6 +14,9 @@ def make_tweet(
     referenced_tweets: list | None = None,
     entities: dict | None = None,
     author_id: str | None = None,
+    attachments: dict | None = None,
+    article: dict | None = None,
+    note_tweet: dict | None = None,
 ) -> dict:
     d: dict = {
         "id": id,
@@ -32,6 +35,12 @@ def make_tweet(
         d["entities"] = entities
     if author_id:
         d["author_id"] = author_id
+    if attachments:
+        d["attachments"] = attachments
+    if article:
+        d["article"] = article
+    if note_tweet:
+        d["note_tweet"] = note_tweet
     return d
 
 

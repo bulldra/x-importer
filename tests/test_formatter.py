@@ -5,7 +5,9 @@ from x_importer.formatter import (
     _build_self_reply_chains,
     _expand_urls,
     _format_analytics,
+    _format_media,
     _format_quoted,
+    _format_tweet_body,
     _is_plain_retweet,
     _sanitize_md_link_text,
     format_day,
@@ -159,14 +161,26 @@ class TestFormatQuoted:
             },
             "D": {
                 "id": "D",
-                "text": "depth4_should_not_appear",
+                "text": "depth4",
                 "_author_username": "u4",
+                "referenced_tweets": [{"type": "quoted", "id": "E"}],
+            },
+            "E": {
+                "id": "E",
+                "text": "depth5",
+                "_author_username": "u5",
+                "referenced_tweets": [{"type": "quoted", "id": "F"}],
+            },
+            "F": {
+                "id": "F",
+                "text": "depth6_should_not_appear",
+                "_author_username": "u6",
             },
         }
         lines = _format_quoted(ref_map["A"], ref_map)
         result = "\n".join(lines)
-        assert "> > > depth3" in result
-        assert "depth4_should_not_appear" not in result
+        assert "> > > > > depth5" in result
+        assert "depth6_should_not_appear" not in result
 
     def test_missing_nested_ref(self):
         ref_map = {
@@ -382,6 +396,200 @@ class TestFormatAnalytics:
         ]
         result = _format_analytics(tweets)
         assert "| 2 | 10 | 5 | 2 | 200 |" in result
+
+    def test_cost_column(self):
+        tweets = [
+            make_tweet(like=1, rt=0, reply=0, impression=10),
+            make_tweet(like=2, rt=0, reply=0, impression=20),
+        ]
+        result = _format_analytics(tweets)
+        assert "| Cost |" in result
+        assert "$0.010" in result  # 2 tweets * $0.005
+
+
+class TestFormatMedia:
+    def test_embeds_image(self):
+        tweet = make_tweet(attachments={"media_keys": ["mk1"]})
+        media_map = {"mk1": "media/mk1.jpg"}
+        lines = _format_media(tweet, media_map)
+        assert "![](media/mk1.jpg)" in lines
+
+    def test_no_attachments(self):
+        tweet = make_tweet()
+        lines = _format_media(tweet, {"mk1": "media/mk1.jpg"})
+        assert lines == []
+
+    def test_missing_key_in_map(self):
+        tweet = make_tweet(attachments={"media_keys": ["mk_missing"]})
+        lines = _format_media(tweet, {})
+        assert lines == []
+
+    def test_multiple_media(self):
+        tweet = make_tweet(attachments={"media_keys": ["mk1", "mk2"]})
+        media_map = {"mk1": "media/mk1.jpg", "mk2": "media/mk2.mp4"}
+        lines = _format_media(tweet, media_map)
+        assert "![](media/mk1.jpg)" in lines
+        assert "![](media/mk2.mp4)" in lines
+
+
+class TestFormatTweetWithMedia:
+    def test_media_embedded_in_output(self):
+        tweet = make_tweet(
+            text="写真付き投稿",
+            attachments={"media_keys": ["mk1"]},
+        )
+        media_map = {"mk1": "media/mk1.jpg"}
+        result = format_tweet(tweet, "testuser", {}, media_map=media_map)
+        assert "![](media/mk1.jpg)" in result
+        assert "写真付き投稿" in result
+
+    def test_no_media_map_still_works(self):
+        tweet = make_tweet(text="普通の投稿")
+        result = format_tweet(tweet, "testuser", {})
+        assert "普通の投稿" in result
+
+
+class TestQuotedWithMedia:
+    def test_media_in_quoted_tweet(self):
+        ref_map = {
+            "Q1": {
+                "id": "Q1",
+                "text": "引用元",
+                "_author_username": "other",
+                "attachments": {"media_keys": ["mk_q"]},
+            },
+        }
+        media_map = {"mk_q": "media/mk_q.jpg"}
+        lines = _format_quoted(ref_map["Q1"], ref_map, media_map=media_map)
+        result = "\n".join(lines)
+        assert "> ![](media/mk_q.jpg)" in result
+
+    def test_no_media_in_quoted(self):
+        ref_map = {
+            "Q1": {
+                "id": "Q1",
+                "text": "引用元",
+                "_author_username": "other",
+            },
+        }
+        lines = _format_quoted(ref_map["Q1"], ref_map)
+        result = "\n".join(lines)
+        assert "![](" not in result
+
+
+class TestQuotedArticle:
+    def test_article_in_quoted_tweet(self):
+        ref_map = {
+            "A1": {
+                "id": "A1",
+                "text": "https://t.co/xxx",
+                "_author_username": "writer",
+                "article": {
+                    "title": "引用記事タイトル",
+                    "plain_text": "引用記事の本文",
+                    "cover_media": "mk_cover",
+                },
+            },
+        }
+        media_map = {"mk_cover": "media/mk_cover.jpg"}
+        lines = _format_quoted(ref_map["A1"], ref_map, media_map=media_map)
+        result = "\n".join(lines)
+        assert "> @writer:" in result
+        assert "> **引用記事タイトル**" in result
+        assert "> ![](media/mk_cover.jpg)" in result
+        assert "> 引用記事の本文" in result
+
+    def test_note_tweet_in_quoted(self):
+        ref_map = {
+            "N1": {
+                "id": "N1",
+                "text": "短縮テキスト",
+                "_author_username": "author",
+                "note_tweet": {
+                    "text": "これは長文の全文テキストです。" * 5,
+                },
+            },
+        }
+        lines = _format_quoted(ref_map["N1"], ref_map)
+        result = "\n".join(lines)
+        assert "短縮テキスト" not in result
+        assert "> これは長文の全文テキストです。" in result
+
+
+class TestArticleFormat:
+    def test_article_shows_title_and_text(self):
+        tweet = make_tweet(text="https://t.co/xxx")
+        tweet["article"] = {
+            "title": "記事タイトル",
+            "plain_text": "記事の本文テキスト",
+            "cover_media": "mk_cover",
+        }
+        media_map = {"mk_cover": "media/mk_cover.jpg"}
+        lines = _format_tweet_body(tweet, {}, media_map=media_map)
+        result = "\n".join(lines)
+        assert "**記事タイトル**" in result
+        assert "記事の本文テキスト" in result
+        assert "![](media/mk_cover.jpg)" in result
+
+    def test_article_without_cover(self):
+        tweet = make_tweet(text="https://t.co/xxx")
+        tweet["article"] = {
+            "title": "タイトルのみ",
+            "plain_text": "本文",
+        }
+        lines = _format_tweet_body(tweet, {})
+        result = "\n".join(lines)
+        assert "**タイトルのみ**" in result
+        assert "本文" in result
+        assert "![](" not in result
+
+    def test_article_no_quoted_rt(self):
+        """article はそのまま出力し、引用RT展開しない"""
+        tweet = make_tweet(
+            text="https://t.co/xxx",
+            referenced_tweets=[{"type": "quoted", "id": "Q1"}],
+        )
+        tweet["article"] = {
+            "title": "記事",
+            "plain_text": "本文",
+        }
+        ref_map = {"Q1": {"id": "Q1", "text": "引用元", "_author_username": "u"}}
+        lines = _format_tweet_body(tweet, ref_map)
+        result = "\n".join(lines)
+        assert "引用元" not in result
+
+
+class TestNoteTweet:
+    def test_uses_full_text(self):
+        tweet = make_tweet(text="短縮テキスト…")
+        tweet["note_tweet"] = {
+            "text": "これは280文字を超える長文投稿の全文です。" * 10,
+        }
+        lines = _format_tweet_body(tweet, {})
+        result = "\n".join(lines)
+        assert "短縮テキスト" not in result
+        assert "これは280文字を超える長文投稿の全文です。" in result
+
+    def test_note_tweet_entities(self):
+        tweet = make_tweet(text="短縮 https://t.co/abc")
+        tweet["note_tweet"] = {
+            "text": "全文 https://t.co/abc を参照",
+            "entities": {
+                "urls": [
+                    {"url": "https://t.co/abc", "expanded_url": "https://example.com"}
+                ]
+            },
+        }
+        lines = _format_tweet_body(tweet, {})
+        result = "\n".join(lines)
+        assert "https://example.com" in result
+        assert "https://t.co/abc" not in result
+
+    def test_no_note_tweet_uses_normal_text(self):
+        tweet = make_tweet(text="通常テキスト")
+        lines = _format_tweet_body(tweet, {})
+        result = "\n".join(lines)
+        assert "通常テキスト" in result
 
 
 class TestWriteMarkdownFiles:

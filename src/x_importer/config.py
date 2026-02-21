@@ -27,9 +27,25 @@ OBSIDIAN_OUTPUT_DIR: str = os.getenv("OBSIDIAN_OUTPUT_DIR", "x-posts")
 FILENAME_FORMAT: str = os.getenv("FILENAME_FORMAT", "x-post-%Y-%m-%d")
 HEADING_FORMAT: str = os.getenv("HEADING_FORMAT", "%Y-%m-%d %H:%M")
 
+# キャッシュ・ログディレクトリ（Vault とは独立して配置可能）
+CACHE_DIR: str = os.getenv("CACHE_DIR", "")
+LOG_DIR: str = os.getenv("LOG_DIR", "")
+
 
 def get_output_path() -> Path:
     return Path(OBSIDIAN_VAULT_PATH) / OBSIDIAN_OUTPUT_DIR
+
+
+def get_cache_dir() -> Path:
+    if CACHE_DIR:
+        return Path(CACHE_DIR)
+    return get_output_path() / ".cache"
+
+
+def get_log_dir() -> Path:
+    if LOG_DIR:
+        return Path(LOG_DIR)
+    return get_output_path() / ".logs"
 
 
 def validate() -> None:

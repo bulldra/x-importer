@@ -49,7 +49,7 @@ x-importer -v                           # 詳細ログ表示
 ### ログ
 
 - コンソール: INFO レベル（`-v` で DEBUG）
-- ファイル: `OBSIDIAN_OUTPUT_DIR/.logs/YYYY-MM-DD.log` に DEBUG レベルで常時出力
+- ファイル: `LOG_DIR/YYYY-MM-DD.log` に DEBUG レベルで常時出力（デフォルト: `OBSIDIAN_OUTPUT_DIR/.logs/`）
 
 ## モジュール構成
 
@@ -89,6 +89,10 @@ src/x_importer/
 | `OBSIDIAN_OUTPUT_DIR` | No | `x-posts` | Vault 内の出力ディレクトリ |
 | `FILENAME_FORMAT` | No | `x-post-%Y-%m-%d` | ファイル名のフォーマット |
 | `HEADING_FORMAT` | No | `%Y-%m-%d %H:%M` | 見出しの日時フォーマット |
+| `CACHE_DIR` | No | `OBSIDIAN_OUTPUT_DIR/.cache` | キャッシュディレクトリ |
+| `LOG_DIR` | No | `OBSIDIAN_OUTPUT_DIR/.logs` | ログディレクトリ |
+
+`CACHE_DIR` / `LOG_DIR` を指定すると、Vault とは独立した場所にキャッシュ・ログを配置できる。
 
 `validate()` で必須変数の存在と `OBSIDIAN_VAULT_PATH` のディレクトリ存在を検証する。
 
@@ -120,7 +124,7 @@ src/x_importer/
 
 ### cache.py - JSON キャッシュ
 
-- 保存先: `OBSIDIAN_VAULT_PATH/OBSIDIAN_OUTPUT_DIR/.cache/`
+- 保存先: `CACHE_DIR`（デフォルト: `OBSIDIAN_OUTPUT_DIR/.cache/`）
 - ファイル名: `YYYYMMDD_YYYYMMDD.json`（取得期間の開始日_終了日）
 - キャッシュ構造の検証: tweets 配列の存在、各ツイートの id/text フィールドを確認
 - `--refresh` フラグでキャッシュを無視して API から再取得可能
@@ -262,6 +266,8 @@ X_ACCESS_TOKEN=取得した Access Token
 X_ACCESS_TOKEN_SECRET=取得した Access Token Secret
 OBSIDIAN_VAULT_PATH=/path/to/your/obsidian/vault
 OBSIDIAN_OUTPUT_DIR=x-posts
+CACHE_DIR=/tmp/x-importer/cache
+LOG_DIR=/tmp/x-importer/logs
 ```
 
 ### 3. 依存関係インストール

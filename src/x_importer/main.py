@@ -7,12 +7,14 @@ from x_importer import cache, config
 from x_importer.client import (
     FetchResult,
     create_client,
+    fetch_missing_media,
     fetch_user_tweets,
     get_me,
     result_from_cache_dict,
     result_to_cache_dict,
 )
 from x_importer.formatter import write_markdown_files
+from x_importer.media import download_media_for_tweets
 from x_importer.url_resolver import resolve_titles_in_tweets
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -37,7 +39,7 @@ def _setup_logging(verbose: bool = False) -> None:
     logger.addHandler(console)
 
     # ファイル出力（常に DEBUG レベル）
-    log_dir = config.get_output_path() / ".logs"
+    log_dir = config.get_log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{datetime.now(JST):%Y-%m-%d}.log"
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
@@ -113,7 +115,7 @@ def main() -> None:
         result = fetch_user_tweets(client, me.id, start, end)
         logger.debug("APIリクエスト数: %d", result.request_count)
         if result.tweets:
-            cache.save(start, end, result_to_cache_dict(result))
+            cache.save(result_to_cache_dict(result))
             logger.debug("キャッシュ保存完了")
     else:
         client = create_client()
@@ -126,12 +128,22 @@ def main() -> None:
     # URL タイトル解決
     logger.info("URLタイトル解決中...")
     resolve_titles_in_tweets(result.tweets)
-    cache.save(start, end, result_to_cache_dict(result))
+
+    # referenced tweets のメディア補完取得
+    extra = fetch_missing_media(client, result)
+    if extra:
+        logger.debug("メディア補完: %d リクエスト追加", extra)
+
+    cache.save(result_to_cache_dict(result))
+
+    # メディアダウンロード
+    output_dir = config.get_output_path()
+    logger.info("メディアダウンロード中...")
+    media_map = download_media_for_tweets(result.tweets, result.includes, output_dir)
 
     # Markdown 出力
-    output_dir = config.get_output_path()
     written_files = write_markdown_files(
-        result.tweets, result.includes, output_dir, me.username
+        result.tweets, result.includes, output_dir, me.username, media_map
     )
 
     # 結果ログ

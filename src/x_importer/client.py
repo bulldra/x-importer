@@ -61,11 +61,30 @@ def _tweet_to_dict(tweet: tweepy.Tweet) -> dict:
                 for u in tweet.entities["urls"]
             ]
         }
+    if hasattr(tweet, "attachments") and tweet.attachments:
+        media_keys = tweet.attachments.get("media_keys", [])
+        if media_keys:
+            d["attachments"] = {"media_keys": [str(k) for k in media_keys]}
+    if hasattr(tweet, "note_tweet") and tweet.note_tweet:
+        d["note_tweet"] = tweet.note_tweet
+    if hasattr(tweet, "article") and tweet.article:
+        d["article"] = tweet.article
     return d
 
 
 def _user_to_dict(user: tweepy.User) -> dict:
     return {"id": str(user.id), "username": user.username}
+
+
+def _media_to_dict(media: tweepy.Media) -> dict:
+    d: dict = {"media_key": media.media_key, "type": media.type}
+    if media.url:
+        d["url"] = media.url
+    if hasattr(media, "preview_image_url") and media.preview_image_url:
+        d["preview_image_url"] = media.preview_image_url
+    if hasattr(media, "variants") and media.variants:
+        d["variants"] = media.variants
+    return d
 
 
 def fetch_user_tweets(
@@ -89,8 +108,18 @@ def fetch_user_tweets(
                 "entities",
                 "referenced_tweets",
                 "author_id",
+                "attachments",
+                "note_tweet",
+                "article",
             ],
-            expansions=["referenced_tweets.id", "referenced_tweets.id.author_id"],
+            expansions=[
+                "referenced_tweets.id",
+                "referenced_tweets.id.author_id",
+                "attachments.media_keys",
+                "article.cover_media",
+                "article.media_entities",
+            ],
+            media_fields=["url", "type", "variants", "preview_image_url"],
             pagination_token=pagination_token,
             user_auth=True,
         )
@@ -101,15 +130,21 @@ def fetch_user_tweets(
 
         if response.includes:
             for key, values in response.includes.items():
-                existing_ids = {item["id"] for item in result.includes.get(key, [])}
+                id_field = "media_key" if key == "media" else "id"
+                existing_ids = {
+                    item[id_field] for item in result.includes.get(key, [])
+                }
                 for item in values:
                     if isinstance(item, tweepy.Tweet):
                         d = _tweet_to_dict(item)
                     elif isinstance(item, tweepy.User):
                         d = _user_to_dict(item)
+                    elif isinstance(item, tweepy.Media):
+                        d = _media_to_dict(item)
                     else:
                         d = {"id": str(item.id)}
-                    if d["id"] not in existing_ids:
+                    item_id = d.get(id_field, d.get("id", ""))
+                    if item_id not in existing_ids:
                         result.includes.setdefault(key, []).append(d)
 
         meta = response.meta or {}
@@ -118,6 +153,61 @@ def fetch_user_tweets(
             break
 
     return result
+
+
+def fetch_missing_media(
+    client: tweepy.Client,
+    result: FetchResult,
+) -> int:
+    """includes.tweets のメディアキーで includes.media にないものを補完取得する。
+
+    Returns:
+        追加取得した API リクエスト数
+    """
+    existing_media_keys = {
+        m["media_key"] for m in result.includes.get("media", [])
+    }
+
+    # メディアキーを持つがメタデータがない referenced tweets を特定
+    missing_tweet_ids: list[str] = []
+    for ref_tweet in result.includes.get("tweets", []):
+        for key in ref_tweet.get("attachments", {}).get("media_keys", []):
+            if key not in existing_media_keys:
+                missing_tweet_ids.append(ref_tweet["id"])
+                break
+        # article の cover_media も確認
+        cover = ref_tweet.get("article", {}).get("cover_media")
+        if cover and cover not in existing_media_keys and ref_tweet["id"] not in missing_tweet_ids:
+            missing_tweet_ids.append(ref_tweet["id"])
+
+    if not missing_tweet_ids:
+        return 0
+
+    # 100件ずつバッチ取得
+    request_count = 0
+    for i in range(0, len(missing_tweet_ids), 100):
+        batch = missing_tweet_ids[i : i + 100]
+        resp = client.get_tweets(
+            ids=batch,
+            tweet_fields=["attachments", "article"],
+            expansions=["attachments.media_keys", "article.cover_media"],
+            media_fields=["url", "type", "variants", "preview_image_url"],
+            user_auth=True,
+        )
+        request_count += 1
+
+        if resp.includes:
+            for item in resp.includes.get("media", []):
+                if isinstance(item, tweepy.Media):
+                    d = _media_to_dict(item)
+                else:
+                    continue
+                if d["media_key"] not in existing_media_keys:
+                    result.includes.setdefault("media", []).append(d)
+                    existing_media_keys.add(d["media_key"])
+
+    result.request_count += request_count
+    return request_count
 
 
 def result_to_cache_dict(result: FetchResult) -> dict:
